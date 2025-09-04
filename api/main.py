@@ -5,33 +5,41 @@ from pydantic import BaseModel
 from keepa_client import KeepaClient
 
 app = FastAPI()
+
+# CORS fix — whitelist your frontend URL or use "*" if you prefer open access
+WEB_ORIGIN = os.environ.get("WEB_ORIGIN", "https://zentra-web.onrender.com")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=[WEB_ORIGIN],   # or ["*"] if you want open CORS
+    allow_credentials=True,       # only safe if not using "*" for allow_origins
     allow_methods=["*"],
-    allow_headers=["*"]
+    allow_headers=["*"],
 )
 
+# Request model for brand coverage
 class CoverageRunReq(BaseModel):
     brand: str
     bsr_max: int = 250000
     require_buybox: bool = True
-    # NEW: fast-return limits to avoid timeouts
     max_pages: int = 3
     max_asins: int = 200
 
+# Health endpoint
 @app.get("/health")
 def health():
     return {"ok": True}
 
+# Brand coverage endpoint
 @app.post("/brands/coverage")
 def brand_coverage(req: CoverageRunReq):
     key = os.environ.get("KEEPA_KEY")
     if not key:
-        raise HTTPException(500, "Missing KEEPA_KEY env var")
+        raise HTTPException(500, "Missing KEEPA_KEY environment variable")
+    
     domain = int(os.environ.get("KEEPA_DOMAIN", "1"))
     kc = KeepaClient(key, domain)
+
     selection = {
         "brand": req.brand,
         "isActive": True,
@@ -50,19 +58,16 @@ def brand_coverage(req: CoverageRunReq):
             break
 
         for p in products:
-            a = (p.get("asin") or "").upper()
-            if a:
-                asins.add(a)
+            asin = (p.get("asin") or "").upper()
+            if asin:
+                asins.add(asin)
                 if len(asins) >= req.max_asins:
                     break
 
-        # stop early if hit limits
-        if len(asins) >= req.max_asins:
+        if len(asins) >= req.max_asins or page >= req.max_pages:
             break
 
         page += 1
-        if page >= req.max_pages:
-            break
 
     return {
         "brand": req.brand,
