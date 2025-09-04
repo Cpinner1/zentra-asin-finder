@@ -1,0 +1,53 @@
+import os
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from keepa_client import KeepaClient
+
+app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
+
+class CoverageRunReq(BaseModel):
+    brand: str
+    bsr_max: int = 250000
+    require_buybox: bool = True
+
+@app.get("/health")
+def health():
+    return {"ok": True}
+
+@app.post("/brands/coverage")
+def brand_coverage(req: CoverageRunReq):
+    key = os.environ.get("KEEPA_KEY")
+    if not key:
+        raise HTTPException(500, "Missing KEEPA_KEY env var")
+    domain = int(os.environ.get("KEEPA_DOMAIN", "1"))
+    kc = KeepaClient(key, domain)
+    selection = {
+        "brand": req.brand,
+        "isActive": True,
+        "current_SalesRankRange": [1, req.bsr_max],
+    }
+    if req.require_buybox:
+        selection["hasBuyBox"] = True
+
+    page = 0
+    asins = set()
+    while True:
+        data = kc.finder(selection, page)
+        products = data.get("products") or []
+        if not products:
+            break
+        for p in products:
+            a = (p.get("asin") or "").upper()
+            if a:
+                asins.add(a)
+        page += 1
+
+    return {"brand": req.brand, "count": len(asins), "asins": sorted(asins)[:200]}
