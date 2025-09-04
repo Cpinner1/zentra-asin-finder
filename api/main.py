@@ -17,6 +17,9 @@ class CoverageRunReq(BaseModel):
     brand: str
     bsr_max: int = 250000
     require_buybox: bool = True
+    # NEW: fast-return limits to avoid timeouts
+    max_pages: int = 3
+    max_asins: int = 200
 
 @app.get("/health")
 def health():
@@ -39,15 +42,30 @@ def brand_coverage(req: CoverageRunReq):
 
     page = 0
     asins = set()
+
     while True:
         data = kc.finder(selection, page)
         products = data.get("products") or []
         if not products:
             break
+
         for p in products:
             a = (p.get("asin") or "").upper()
             if a:
                 asins.add(a)
-        page += 1
+                if len(asins) >= req.max_asins:
+                    break
 
-    return {"brand": req.brand, "count": len(asins), "asins": sorted(asins)[:200]}
+        # stop early if hit limits
+        if len(asins) >= req.max_asins:
+            break
+
+        page += 1
+        if page >= req.max_pages:
+            break
+
+    return {
+        "brand": req.brand,
+        "count": len(asins),
+        "asins": sorted(asins)[: req.max_asins],
+    }
