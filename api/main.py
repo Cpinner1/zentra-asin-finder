@@ -6,18 +6,16 @@ from keepa_client import KeepaClient
 
 app = FastAPI()
 
-# CORS fix — whitelist your frontend URL or use "*" if you prefer open access
-WEB_ORIGIN = os.environ.get("WEB_ORIGIN", "https://zentra-web.onrender.com")
-
+# CORS fix: Open CORS without credentials so browsers accept it
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[WEB_ORIGIN],   # or ["*"] if you want open CORS
-    allow_credentials=True,       # only safe if not using "*" for allow_origins
+    allow_origins=["*"],        # Allow all origins for testing
+    allow_credentials=False,    # Must be False with "*"
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Request model for brand coverage
+# Request body model
 class CoverageRunReq(BaseModel):
     brand: str
     bsr_max: int = 250000
@@ -25,7 +23,7 @@ class CoverageRunReq(BaseModel):
     max_pages: int = 3
     max_asins: int = 200
 
-# Health endpoint
+# Health check
 @app.get("/health")
 def health():
     return {"ok": True}
@@ -36,7 +34,7 @@ def brand_coverage(req: CoverageRunReq):
     key = os.environ.get("KEEPA_KEY")
     if not key:
         raise HTTPException(500, "Missing KEEPA_KEY environment variable")
-    
+
     domain = int(os.environ.get("KEEPA_DOMAIN", "1"))
     kc = KeepaClient(key, domain)
 
